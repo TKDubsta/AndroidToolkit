@@ -1,0 +1,10 @@
+node_modules/
+out/
+build/
+dist/
+dist-test/
+coverage/
+logs/
+**/*.lock
+src/UI/vendors/**
+src/WebUI/vendors/**

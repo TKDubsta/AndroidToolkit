@@ -1,0 +1,20 @@
+// Test-only compilation of the renderer sources.
+//
+// The shipped renderer is bundled by esbuild into a single IIFE
+// (dist/UI/js/app/bundle.js), which is neither loadable by `require()` nor
+// meaningful to measure per-file. This config emits the SAME sources as
+// individual CommonJS modules under dist-test/ so `node:test` files can require
+// them and c8 can report per-file coverage. dist-test/ is build output only:
+// gitignored, excluded from the asar, never shipped. Rebuilt by `pretest`.
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "node10",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "rootDir": "./src",
+    "outDir": "./dist-test",
+    "types": ["jquery", "node"]
+  },
+  "include": ["src/UI/js/app/**/*", "src/UI/types/**/*", "src/shared/**/*"]
+}

@@ -1,0 +1,88 @@
+{
+  "name": "android-toolkit",
+  "productName": "AndroidToolkit",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Desktop toolkit for bulk ADB work over USB and the network: discovery, APK deployment, device admin removal and factory resets.",
+  "main": "dist/main.js",
+  "scripts": {
+    "clean": "node -e \"for (const d of ['dist','dist-test']) require('node:fs').rmSync(d,{recursive:true,force:true})\"",
+    "build:ts": "tsc -p tsconfig.json",
+    "typecheck:renderer": "tsc -p tsconfig.renderer.json",
+    "build:renderer": "node scripts/build-renderer.js",
+    "build:test-renderer": "tsc -p tsconfig.renderer.test.json",
+    "build:css": "node scripts/build-css.js",
+    "copy:assets": "node scripts/copy-assets.js",
+    "build": "npm run clean && npm run build:ts && npm run typecheck:renderer && npm run build:renderer && npm run build:css && npm run copy:assets",
+    "typecheck": "tsc -p tsconfig.json --noEmit && npm run typecheck:renderer",
+    "start": "node scripts/dev.js",
+    "premake": "npm run build",
+    "make": "electron-forge make",
+    "publish": "node scripts/publish-release.js",
+    "lint": "eslint",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier \"**/*.{js,mjs,cjs,ts,css,md,json,html,yml}\" --write",
+    "format:check": "prettier \"**/*.{js,mjs,cjs,ts,css,md,json,html,yml}\" --check",
+    "pretest": "npm run build && npm run build:test-renderer",
+    "test": "node scripts/run-isolated-tests.js",
+    "pretest:coverage": "npm run build && npm run build:test-renderer",
+    "test:coverage": "c8 --all --include=dist/Modules/**/*.js --include=dist/main/**/*.js --include=dist-test/UI/js/app/**/*.js --reporter=text --reporter=text-summary --reporter=lcov node scripts/run-isolated-tests.js",
+    "prepare": "husky",
+    "postinstall": "node scripts/copy-bootstrap-icons.js"
+  },
+  "keywords": [
+    "electron",
+    "android",
+    "adb",
+    "apk",
+    "device-management",
+    "factory-reset",
+    "device-admin",
+    "mdns"
+  ],
+  "author": {
+    "name": "TKDubsta",
+    "email": "tom@tkw.bz",
+    "url": "https://tkw.bz/"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TKDubsta/AndroidToolkit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TKDubsta/AndroidToolkit/issues"
+  },
+  "homepage": "https://github.com/TKDubsta/AndroidToolkit#readme",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^8.0.1",
+    "@electron-forge/maker-squirrel": "^8.0.1",
+    "@electron-forge/maker-zip": "^8.0.1",
+    "@electron-forge/plugin-auto-unpack-natives": "^8.0.1",
+    "@electron-forge/plugin-fuses": "^8.0.1",
+    "@electron/fuses": "^2.1.3",
+    "@eslint/js": "^10.0.1",
+    "@eslint/markdown": "^8.0.3",
+    "@types/jquery": "^4.0.1",
+    "@types/node": "^26.6.5",
+    "bootstrap-icons": "^1.13.2",
+    "c8": "^12.0.0",
+    "electron": "^43.2.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.13.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.13.0",
+    "husky": "^9.1.7",
+    "prettier": "^3.9.10",
+    "typescript": "~5.7",
+    "typescript-eslint": "^8.71.2"
+  },
+  "dependencies": {
+    "bonjour-service": "^1.4.4",
+    "electron-squirrel-startup": "^1.0.1",
+    "picocolors": "^1.1.1"
+  }
+}

@@ -1,0 +1,548 @@
+name: Build
+
+run-name: >-
+  Build (${{ github.event_name == 'workflow_dispatch' && (inputs.release == 'publish' && 'Build + Publish Release' || (inputs.release == 'draft' && 'Build + Draft Release' || 'Build Only')) || 'Build + Draft Release' }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      macos_variant:
+        description: macOS distribution variant to build and release
+        required: true
+        default: signed-notarized
+        type: choice
+        options:
+          - unsigned
+          - signed
+          - signed-notarized
+      release:
+        # One choice rather than a pair of booleans: "draft it" and "publish it"
+        # are points on one scale, and as separate flags they could be set to
+        # contradict each other.
+        description: What to do with the built distributables
+        required: true
+        default: draft
+        type: choice
+        options:
+          # Build only. Artifacts stay on the workflow run.
+          - none
+          # Create/update the release as a draft and upload the assets to it.
+          - draft
+          # As draft, then publish it once every asset has uploaded.
+          - publish
+
+permissions:
+  contents: write
+
+jobs:
+  # Nothing is built, let alone released, from a commit CI has not passed. The
+  # release is usually dispatched straight after the push, so this waits for the
+  # CI run on the same commit rather than requiring it to have finished already.
+  ci-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      actions: read
+    steps:
+      - name: Require a green CI run for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          deadline=$((SECONDS + 45 * 60))
+          while :; do
+            runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SHA&per_page=50" --jq '.workflow_runs')
+            if jq -e 'any(.[]; .conclusion == "success")' <<<"$runs" >/dev/null; then
+              echo "CI passed for $SHA."
+              exit 0
+            fi
+            if jq -e 'length > 0 and all(.[]; .status == "completed")' <<<"$runs" >/dev/null; then
+              echo "::error::CI did not pass for $SHA; refusing to build a release from it."
+              jq -r '.[] | "  \(.conclusion)  \(.html_url)"' <<<"$runs"
+              exit 1
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::Timed out waiting for CI on $SHA."
+              exit 1
+            fi
+            echo "Waiting for CI on $SHA..."
+            sleep 30
+          done
+
+  release-meta:
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      product_name: ${{ steps.version.outputs.product_name }}
+      macos_variant: ${{ steps.variant.outputs.macos_variant }}
+      variant_label: ${{ steps.variant.outputs.variant_label }}
+      release_mode: ${{ steps.variant.outputs.release_mode }}
+      should_release: ${{ steps.variant.outputs.should_release }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Resolve macOS variant
+        id: variant
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VARIANT: ${{ inputs.macos_variant }}
+          INPUT_RELEASE: ${{ inputs.release }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VARIANT="$INPUT_VARIANT"
+            RELEASE_MODE="$INPUT_RELEASE"
+          else
+            VARIANT="signed-notarized"
+            RELEASE_MODE="draft"
+          fi
+
+          case "$RELEASE_MODE" in
+            publish|draft) ;;
+            *) RELEASE_MODE="none" ;;
+          esac
+
+          # This label calls out a build that is NOT the usual one. It no longer
+          # appears in the title -- that is now just the version and the product
+          # -- so it goes in the notes, and only when there is something to say.
+          case "$VARIANT" in
+            unsigned)
+              LABEL="Unsigned build: macOS will refuse to open this without an explicit Gatekeeper override."
+              ;;
+            signed)
+              LABEL="Signed but NOT notarized: macOS may still warn on first launch."
+              ;;
+            *)
+              VARIANT="signed-notarized"
+              LABEL=""
+              ;;
+          esac
+
+          {
+            echo "macos_variant=$VARIANT"
+            echo "variant_label=$LABEL"
+            echo "release_mode=$RELEASE_MODE"
+            echo "should_release=$([ "$RELEASE_MODE" = "none" ] && echo false || echo true)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Read version and product name from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          # The release title reads the product out of package.json.
+          PRODUCT_NAME=$(node -p "require('./package.json').productName || require('./package.json').name")
+          {
+            echo "version=$VERSION"
+            echo "tag=v$VERSION"
+            echo "product_name=$PRODUCT_NAME"
+          } >> "$GITHUB_OUTPUT"
+
+  make:
+    needs: release-meta
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS and Windows only; AndroidToolkit does not ship a Linux build.
+        os: [macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+    env:
+      MACOS_VARIANT: ${{ needs.release-meta.outputs.macos_variant }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate Apple signing secrets
+        if: runner.os == 'macOS' && env.MACOS_VARIANT != 'unsigned'
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          REQUIRED_VARS=(
+            MACOS_CERT_P12_BASE64
+            MACOS_CERT_PASSWORD
+          )
+
+          for VAR_NAME in "${REQUIRED_VARS[@]}"; do
+            if [ -z "${!VAR_NAME}" ]; then
+              echo "Missing required macOS signing secret: ${VAR_NAME}"
+              exit 1
+            fi
+          done
+
+      - name: Validate Apple notarization secrets
+        if: runner.os == 'macOS' && env.MACOS_VARIANT == 'signed-notarized'
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          REQUIRED_VARS=(
+            APPLE_API_KEY_ID
+            APPLE_API_ISSUER_ID
+            APPLE_API_PRIVATE_KEY
+          )
+
+          for VAR_NAME in "${REQUIRED_VARS[@]}"; do
+            if [ -z "${!VAR_NAME}" ]; then
+              echo "Missing required macOS notarization secret: ${VAR_NAME}"
+              exit 1
+            fi
+          done
+
+      - name: Import Developer ID certificate
+        if: runner.os == 'macOS' && env.MACOS_VARIANT != 'unsigned'
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="temporary-build-password"
+
+          echo "$MACOS_CERT_P12_BASE64" | base64 -D -o "$RUNNER_TEMP/signing-cert.p12"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" "/Users/runner/Library/Keychains/login.keychain-db"
+
+          security import "$RUNNER_TEMP/signing-cert.p12" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$MACOS_CERT_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security \
+            -T /usr/bin/productbuild
+
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+          RESOLVED_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -n 1)
+          if [ -z "$RESOLVED_IDENTITY" ]; then
+            echo "No Developer ID Application identity found in imported keychain."
+            exit 1
+          fi
+
+          if [ -n "$APPLE_SIGN_IDENTITY" ] && [ "$APPLE_SIGN_IDENTITY" != "$RESOLVED_IDENTITY" ]; then
+            echo "Provided APPLE_SIGN_IDENTITY does not match imported identity."
+            echo "Provided: $APPLE_SIGN_IDENTITY"
+            echo "Resolved: $RESOLVED_IDENTITY"
+            exit 1
+          fi
+
+          echo "Using signing identity: $RESOLVED_IDENTITY"
+
+          {
+            echo "APPLE_KEYCHAIN_PATH=$KEYCHAIN_PATH"
+            echo "APPLE_SIGN_IDENTITY_RESOLVED=$RESOLVED_IDENTITY"
+          } >> "$GITHUB_ENV"
+
+      - name: Write notarization API key file
+        if: runner.os == 'macOS' && env.MACOS_VARIANT == 'signed-notarized'
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          printf '%s' "$APPLE_API_PRIVATE_KEY" > "$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+
+      - name: Build unsigned distributables
+        if: runner.os != 'macOS' || env.MACOS_VARIANT == 'unsigned'
+        env:
+          BUILD_VARIANT_NAME: ${{ runner.os == 'macOS' && 'unsigned' || 'standard' }}
+        run: npm run make
+
+      - name: Build signed distributables
+        if: runner.os == 'macOS' && env.MACOS_VARIANT == 'signed'
+        env:
+          BUILD_VARIANT_NAME: signed
+          APPLE_SIGN_IDENTITY: ${{ env.APPLE_SIGN_IDENTITY_RESOLVED }}
+          APPLE_KEYCHAIN_PATH: ${{ env.APPLE_KEYCHAIN_PATH }}
+        run: npm run make
+
+      - name: Build signed + notarized distributables
+        if: runner.os == 'macOS' && env.MACOS_VARIANT == 'signed-notarized'
+        env:
+          BUILD_VARIANT_NAME: signed-notarized
+          APPLE_SIGN_IDENTITY: ${{ env.APPLE_SIGN_IDENTITY_RESOLVED }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/AuthKey_${{ secrets.APPLE_API_KEY_ID }}.p8
+          APPLE_KEYCHAIN_PATH: ${{ env.APPLE_KEYCHAIN_PATH }}
+        run: |
+          for attempt in 1 2 3; do
+            if npm run make; then
+              exit 0
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+
+            echo "Notarized make failed on attempt $attempt, retrying..."
+            sleep $((attempt * 30))
+          done
+
+      - name: Cleanup macOS signing materials
+        if: runner.os == 'macOS' && always() && env.MACOS_VARIANT != 'unsigned'
+        run: |
+          rm -f "$RUNNER_TEMP/signing-cert.p12"
+          rm -f "$RUNNER_TEMP/AuthKey_${{ secrets.APPLE_API_KEY_ID }}.p8"
+          security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: make-${{ matrix.os }}-${{ runner.os == 'macOS' && env.MACOS_VARIANT || 'standard' }}
+          path: out/make/**
+          if-no-files-found: error
+
+  release:
+    needs: [release-meta, make]
+    if: ${{ needs.release-meta.outputs.should_release == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.release-meta.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.release-meta.outputs.version }}
+      RELEASE_PRODUCT_NAME: ${{ needs.release-meta.outputs.product_name }}
+      RELEASE_VARIANT_LABEL: ${{ needs.release-meta.outputs.variant_label }}
+      RELEASE_MODE: ${{ needs.release-meta.outputs.release_mode }}
+      RELEASE_REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # Full history + tags: the changelog below is derived from the commits
+          # since the previous release tag, and a shallow clone has neither.
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: release-artifacts
+          pattern: make-*
+          merge-multiple: true
+
+      - name: Generate macOS updater manifest
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const crypto = require('node:crypto');
+
+          const releaseRoot = path.resolve('release-artifacts');
+          const version = process.env.RELEASE_VERSION;
+          if (!version) {
+            throw new Error('RELEASE_VERSION env var is required to generate latest-mac.yml');
+          }
+
+          function walkFiles(dir) {
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            const output = [];
+            for (const entry of entries) {
+              const fullPath = path.join(dir, entry.name);
+              if (entry.isDirectory()) {
+                output.push(...walkFiles(fullPath));
+              } else {
+                output.push(fullPath);
+              }
+            }
+            return output;
+          }
+
+          const files = walkFiles(releaseRoot);
+          const macZipFiles = files.filter((filePath) => {
+            const lowered = filePath.toLowerCase();
+            return lowered.endsWith('.zip') && lowered.includes('darwin');
+          });
+
+          if (macZipFiles.length === 0) {
+            console.log('No macOS zip artifact found, skipping latest-mac.yml generation.');
+            process.exit(0);
+          }
+
+          const preferredZip =
+            macZipFiles.find((filePath) => filePath.toLowerCase().includes('darwin-arm64')) ||
+            macZipFiles.find((filePath) => filePath.toLowerCase().includes('darwin-x64')) ||
+            macZipFiles[0];
+
+          const preferredDir = path.dirname(preferredZip);
+          const preferredBaseName = path.basename(preferredZip);
+          const archMatch = preferredBaseName.match(/darwin-(arm64|x64)/i);
+          const arch = (archMatch && archMatch[1]) ? archMatch[1].toLowerCase() : 'arm64';
+          const canonicalZipName = `AndroidToolkit-darwin-${arch}-${version}.zip`;
+
+          // Ensure the updater manifest always references a stable canonical
+          // filename, whatever forge named the zip.
+          const aliasNames = [canonicalZipName];
+
+          for (const aliasName of aliasNames) {
+            const aliasPath = path.join(preferredDir, aliasName);
+            if (path.basename(preferredZip) === aliasName) continue;
+            if (!fs.existsSync(aliasPath)) {
+              fs.copyFileSync(preferredZip, aliasPath);
+              console.log(`Created macOS zip alias: ${aliasName}`);
+            }
+          }
+
+          const canonicalZipPath = path.join(preferredDir, canonicalZipName);
+          const zipSourcePath = fs.existsSync(canonicalZipPath) ? canonicalZipPath : preferredZip;
+
+          const zipBuffer = fs.readFileSync(zipSourcePath);
+          const sha512 = crypto.createHash('sha512').update(zipBuffer).digest('base64');
+          const zipSize = fs.statSync(zipSourcePath).size;
+          const zipName = canonicalZipName;
+          const releaseDate = new Date().toISOString();
+
+          const manifest = [
+            `version: ${version}`,
+            'files:',
+            `  - url: ${zipName}`,
+            `    sha512: ${sha512}`,
+            `    size: ${zipSize}`,
+            `path: ${zipName}`,
+            `sha512: ${sha512}`,
+            `releaseDate: '${releaseDate}'`,
+            '',
+          ].join('\n');
+
+          const outputPath = path.join(releaseRoot, 'latest-mac.yml');
+          fs.writeFileSync(outputPath, manifest, 'utf8');
+          console.log(`Generated ${outputPath} for ${zipName}`);
+          NODE
+
+      # Notes are built from the commits since the previous release rather than
+      # from GitHub's generated notes: those are assembled from merged pull
+      # requests, and this repo commits to main directly, so they would come out
+      # empty. The commit subjects are the changelog.
+      - name: Build release notes
+        run: |
+          # The tag for THIS release is excluded: on a re-run it already exists
+          # and points at HEAD, which would otherwise make the range empty.
+          PREVIOUS_TAG=$(git tag --list 'v*' --sort=-v:refname \
+            | grep -vFx "$RELEASE_TAG" \
+            | head -n 1)
+
+          if [ -n "$PREVIOUS_TAG" ]; then
+            echo "Changelog range: ${PREVIOUS_TAG}..HEAD"
+            RANGE="${PREVIOUS_TAG}..HEAD"
+          else
+            echo "No previous tag found; using full history."
+            RANGE="HEAD"
+          fi
+
+          # Subjects only, newest first, minus the merges and the version-bump
+          # commit itself -- "Release 3.16.1" says nothing in the changelog of
+          # release 3.16.1.
+          CHANGES=$(git log --no-merges --pretty=format:'- %s' "$RANGE" \
+            | grep -vE '^- Release [0-9]+\.[0-9]+\.[0-9]+$' \
+            || true)
+
+          {
+            if [ -n "$RELEASE_VARIANT_LABEL" ]; then
+              echo "> [!WARNING]"
+              echo "> ${RELEASE_VARIANT_LABEL}"
+              echo
+            fi
+
+            echo "## Changes"
+            echo
+            if [ -n "$CHANGES" ]; then
+              echo "$CHANGES"
+            else
+              echo "- No changes recorded since ${PREVIOUS_TAG:-the start of the project}."
+            fi
+
+            if [ -n "$PREVIOUS_TAG" ]; then
+              echo
+              echo "**Full changelog**: https://github.com/${RELEASE_REPO}/compare/${PREVIOUS_TAG}...${RELEASE_TAG}"
+            fi
+          } > release-notes.md
+
+          echo "--- release notes ---"
+          cat release-notes.md
+
+      - name: Create or update draft release
+        run: |
+          TITLE="v${RELEASE_VERSION} - ${RELEASE_PRODUCT_NAME}"
+
+          # A NEW release is always created as a draft, whatever the mode: the
+          # assets upload in the next step, and a release published before them
+          # is a release people can download with nothing in it.
+          #
+          # An EXISTING one keeps whatever it already is. Rebuilding a version
+          # that is already out -- to replace a bad asset, say -- must not yank
+          # it back to draft behind the backs of everyone it is offered to.
+          if gh release view "$RELEASE_TAG" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
+            IS_DRAFT=$(gh release view "$RELEASE_TAG" --repo "$RELEASE_REPO" --json isDraft -q .isDraft)
+            if [ "$IS_DRAFT" = "true" ]; then
+              gh release edit "$RELEASE_TAG" --repo "$RELEASE_REPO" --draft --title "$TITLE" --notes-file release-notes.md
+            else
+              echo "Release ${RELEASE_TAG} is already published; updating it in place."
+              gh release edit "$RELEASE_TAG" --repo "$RELEASE_REPO" --title "$TITLE" --notes-file release-notes.md
+            fi
+          else
+            if git ls-remote --exit-code --tags "https://github.com/${RELEASE_REPO}" "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+              gh release create "$RELEASE_TAG" --repo "$RELEASE_REPO" --verify-tag --draft --title "$TITLE" --notes-file release-notes.md
+            else
+              echo "Tag ${RELEASE_TAG} does not exist yet; creating it from current commit via release creation."
+              gh release create "$RELEASE_TAG" --repo "$RELEASE_REPO" --draft --title "$TITLE" --notes-file release-notes.md
+            fi
+          fi
+
+      - name: Upload release assets
+        run: |
+          mapfile -t FILES < <(find release-artifacts -type f ! -name '.DS_Store' | sort)
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "No release artifacts found."
+            exit 1
+          fi
+
+          # De-duplicated by the name the asset will have ONCE UPLOADED, not by
+          # its filename: GitHub rewrites spaces to dots, so two files can land
+          # on one asset. The first one through wins and the other is skipped.
+          declare -A SEEN
+          UPLOAD_FILES=()
+          for file in "${FILES[@]}"; do
+            name=$(basename "$file")
+            asset_name="${name// /.}"
+            if [[ -n "${SEEN[$asset_name]:-}" ]]; then
+              echo "Skipping duplicate asset name: $asset_name ($file)"
+              continue
+            fi
+            SEEN[$asset_name]=1
+            UPLOAD_FILES+=("$file")
+          done
+
+          if [ "${#UPLOAD_FILES[@]}" -eq 0 ]; then
+            echo "No unique release assets found after de-duplication."
+            exit 1
+          fi
+
+          echo "Uploading ${#UPLOAD_FILES[@]} release assets to ${RELEASE_REPO}:${RELEASE_TAG}"
+          # --clobber rather than delete-then-upload: GitHub rewrites spaces in
+          # an asset name to dots, so deleting by the file's own basename never
+          # matches what was actually stored. Only ever hit on a re-run.
+          gh release upload "$RELEASE_TAG" "${UPLOAD_FILES[@]}" --repo "$RELEASE_REPO" --clobber
+
+      # Last step on purpose. Everything above can be re-run against a draft
+      # nobody has seen; this is the one that makes it public, so it only
+      # happens once every asset is actually on the release.
+      - name: Publish release
+        if: ${{ env.RELEASE_MODE == 'publish' }}
+        run: |
+          gh release edit "$RELEASE_TAG" --repo "$RELEASE_REPO" --draft=false --latest
+          echo "Published https://github.com/${RELEASE_REPO}/releases/tag/${RELEASE_TAG}"

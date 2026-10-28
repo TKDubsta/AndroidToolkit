@@ -1,0 +1,431 @@
+/* =========================================================================
+   Design tokens (ported from ShowTrak Server)
+   -------------------------------------------------------------------------
+   Every shared colour, surface, radius, type size, layer and layout constant
+   lives here. Dark theme only; Bootstrap loads before this file.
+
+   Colours that need translucent variants are declared as bare channel
+   triplets (`--x-rgb: R G B`) and used as `rgb(var(--x-rgb) / alpha)`.
+   ========================================================================= */
+:root {
+  /* --- Status palette ------------------------------------------------------
+   * Tile washes. ONLINE (adb state "device") -> green, OFFLINE -> red,
+   * DEGRADED (unauthorized / no permissions / recovery) -> orange,
+   * IDLE (connecting, authorizing) -> grey, PENDING (discovered, not yet
+   * connected) -> blue. */
+  --status-online-rgb: 18 255 0;
+  --status-online-a: 32%;
+  --status-offline-rgb: 255 0 0;
+  --status-offline-a: 24%;
+  --status-degraded-rgb: 255 140 0;
+  --status-degraded-a: 32%;
+  --status-idle-rgb: 64 64 64;
+  --status-idle-a: 50%;
+  --status-pending-rgb: 52 152 219;
+  --status-pending-a: 25%;
+
+  --status-online: rgb(var(--status-online-rgb) / var(--status-online-a));
+  --status-offline: rgb(var(--status-offline-rgb) / var(--status-offline-a));
+  --status-degraded: rgb(var(--status-degraded-rgb) / var(--status-degraded-a));
+  --status-idle: rgb(var(--status-idle-rgb) / var(--status-idle-a));
+  --status-pending: rgb(var(--status-pending-rgb) / var(--status-pending-a));
+
+  /* Saturated variants for dots and badges. */
+  --status-graph-online-rgb: 38 214 44;
+  --status-graph-offline-rgb: 224 36 36;
+  --status-graph-degraded-rgb: 255 149 0;
+  --status-graph-idle-rgb: 120 126 134;
+  --status-graph-online: rgb(var(--status-graph-online-rgb) / 0.98);
+  --status-graph-offline: rgb(var(--status-graph-offline-rgb) / 0.98);
+  --status-graph-degraded: rgb(var(--status-graph-degraded-rgb) / 0.98);
+  --status-graph-idle: rgb(var(--status-graph-idle-rgb) / 0.9);
+  --status-graph-pending: rgb(var(--status-pending-rgb) / 0.98);
+
+  /* --- Semantic colours ---------------------------------------------------- */
+  --danger-rgb: 220 53 69;
+  --danger: rgb(var(--danger-rgb));
+  --danger-text-rgb: 255 107 107;
+  --danger-text: rgb(var(--danger-text-rgb));
+  --danger-text-hover: #ff8787;
+  --danger-text-soft: #ffb3bc;
+
+  --success-rgb: 40 167 69;
+  --success: rgb(var(--success-rgb));
+  --success-text-rgb: 79 209 139;
+  --success-text: rgb(var(--success-text-rgb));
+  --success-text-soft: #96e6b3;
+
+  --warning-rgb: 255 193 7;
+  --warning: rgb(var(--warning-rgb));
+  --warning-soft-rgb: 255 181 77;
+  --warning-text: #ffe08a;
+
+  --info-rgb: 77 159 255;
+  --info: rgb(var(--info-rgb));
+  --info-text: #a8d2ff;
+  --info-cyan-rgb: 13 202 240;
+  --info-cyan: #3dd5f3;
+  --info-cyan-soft: #6edff6;
+
+  /* The purple that lifts a hovered/focused menu row. */
+  --accent-rgb: 120 95 200;
+
+  /* --- Surfaces ------------------------------------------------------------ */
+  --surface-0-rgb: 12 9 28;
+  --surface-1-rgb: 23 20 46;
+  --surface-2-rgb: 29 26 47;
+  --surface-3-rgb: 39 35 59;
+  --surface-0: rgb(var(--surface-0-rgb));
+  --surface-1: rgb(var(--surface-1-rgb));
+  --surface-2: rgb(var(--surface-2-rgb));
+  --surface-3: rgb(var(--surface-3-rgb));
+
+  --surface-ghost: rgb(255 255 255 / 0.03);
+  --surface-ghost-hover: rgb(255 255 255 / 0.08);
+  --surface-ghost-active: rgb(255 255 255 / 0.12);
+
+  --app-bg-gradient: radial-gradient(circle at 50% 80%, var(--surface-1) 0%, var(--surface-0) 100%);
+  --menu-bg: linear-gradient(180deg, var(--surface-2) 0%, var(--surface-1) 100%);
+
+  --border-subtle: rgb(255 255 255 / 0.08);
+  --border-default: rgb(255 255 255 / 0.12);
+
+  /* --- Fields -------------------------------------------------------------- */
+  --field-bg: rgb(38 34 62);
+  --field-bg-hover: rgb(45 41 72);
+  --field-bg-focus: rgb(52 45 88);
+  --field-bg-disabled: rgb(29 26 50);
+  --field-bg-invalid: rgb(66 30 50);
+
+  /* --- Text ---------------------------------------------------------------- */
+  --text-strong: rgb(255 255 255 / 0.92);
+  --text-soft: rgb(255 255 255 / 0.85);
+  --text-secondary: rgb(255 255 255 / 0.72);
+  --text-muted: rgb(255 255 255 / 0.6);
+  --text-subtle: rgb(255 255 255 / 0.45);
+  --text-faint: rgb(255 255 255 / 0.35);
+
+  /* --- Radii --------------------------------------------------------------- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  /* --- Type scale ---------------------------------------------------------- */
+  --fs-3xs: 9px;
+  --fs-2xs: 10px;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 14px;
+  --fs-xl: 15px;
+
+  /* --- Layout -------------------------------------------------------------- */
+  --bottom-bar-height: 40px;
+  --bottom-bar-toggle-height: 26px;
+  --tile-name-font-size: 1rem;
+  --tile-hostname-font-size: var(--fs-sm);
+  --tile-width: 230px;
+  --tile-height: 104px;
+  --tile-status-height: 20px;
+
+  /* --- Layers -------------------------------------------------------------- */
+  --z-base: 1;
+  --z-raised: 2;
+  --z-float: 3;
+  --z-sticky: 5;
+  --z-bottom-bar: 1000;
+  --z-toast: 1100;
+  --z-banner: 1200;
+  --z-dropdown: 2000;
+  --z-overlay: 20000;
+  --z-context-menu: 100000;
+  --z-dragbar: 1000000;
+  --z-critical: 1000001;
+}
+
+/* Text selection is opt-in: what an operator would reasonably copy. */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='button']),
+textarea,
+pre,
+code,
+.job-output,
+.device-serial,
+.device-address {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.dragbar {
+  z-index: var(--z-dragbar);
+  position: fixed;
+  width: 100vw;
+  height: 2rem;
+  -webkit-app-region: drag;
+  background-color: rgb(var(--surface-2-rgb) / 0.99) !important;
+  padding: 0.3rem 0.8rem !important;
+  color: #ffffff !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  font-weight: 700;
+}
+
+/* macOS traffic lights sit at the left of the dragbar. */
+body.platform-darwin .dragbar {
+  padding-left: 84px !important;
+  justify-content: flex-start !important;
+}
+
+body.macos-native-fullscreen .dragbar {
+  display: none !important;
+}
+
+body.macos-native-fullscreen #APPLICATION_CONTAINER {
+  height: 100% !important;
+}
+
+body.macos-native-fullscreen #APPLICATION {
+  padding-top: 0 !important;
+}
+
+#APPLICATION_NAVBAR_TITLE {
+  color: var(--text-strong);
+}
+
+#APPLICATION_NAVBAR_LOGO {
+  width: 18px;
+  height: 18px;
+}
+
+#APPLICATION_CONTAINER {
+  position: absolute;
+  width: 100%;
+  height: calc(100% - 2rem);
+  overflow: auto;
+  background: var(--app-bg-gradient) !important;
+}
+
+#APPLICATION {
+  /* Grid items pack to the top; the gradient behind them is the container's. */
+  align-content: start;
+  min-height: max(100%, 100vh);
+  padding-top: 2rem !important;
+  padding-bottom: var(--bottom-bar-height) !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  background: transparent !important;
+}
+
+/* Bottom bar */
+#APP_BOTTOM_BAR {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: var(--bottom-bar-height);
+  background: var(--surface-2);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  z-index: var(--z-bottom-bar);
+}
+
+#APP_BOTTOM_BAR .bar-content {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+}
+
+#APP_BOTTOM_BAR .bar-section.left {
+  justify-self: start;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#APP_BOTTOM_BAR .bar-section.center {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-soft);
+  font-weight: 700;
+  font-size: var(--fs-sm);
+}
+#APP_BOTTOM_BAR .bar-section.right {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.min-w-0 {
+  min-width: 0;
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+/* Bootstrap gives every .btn a 1px border; the app's buttons are borderless. */
+.btn {
+  border: none;
+}
+
+.btn-ghost {
+  background-color: var(--surface-ghost) !important;
+  color: var(--text-soft) !important;
+}
+
+.btn-ghost:hover {
+  background-color: var(--surface-ghost-hover) !important;
+  color: #fff !important;
+}
+
+/* Bootstrap's colour variants, retinted: text in the hue over a translucent
+   wash of it, deepening on hover. Never a solid fill. */
+.btn-success {
+  --st-btn-rgb: var(--success-text-rgb);
+  --st-btn-hover: var(--success-text);
+}
+.btn-info,
+.btn-primary {
+  --st-btn-rgb: var(--info-rgb);
+  --st-btn-hover: var(--info-text);
+}
+.btn-warning {
+  --st-btn-rgb: var(--warning-soft-rgb);
+  --st-btn-hover: var(--warning-text);
+}
+.btn-light,
+.btn-secondary,
+.btn-dark,
+[class*='btn-outline-'] {
+  --st-btn-rgb: 255 255 255;
+  --st-btn-hover: #fff;
+}
+
+.btn-success,
+.btn-info,
+.btn-primary,
+.btn-warning,
+.btn-light,
+.btn-secondary,
+.btn-dark,
+[class*='btn-outline-'] {
+  color: rgb(var(--st-btn-rgb) / 0.9) !important;
+  background-color: rgb(var(--st-btn-rgb) / 0.1) !important;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease;
+}
+
+.btn-success:hover,
+.btn-info:hover,
+.btn-primary:hover,
+.btn-warning:hover,
+.btn-light:hover,
+.btn-secondary:hover,
+.btn-dark:hover,
+[class*='btn-outline-']:hover,
+.btn-success:active,
+.btn-info:active,
+.btn-primary:active,
+.btn-warning:active,
+.btn-light:active,
+.btn-secondary:active,
+.btn-dark:active,
+[class*='btn-outline-']:active {
+  color: var(--st-btn-hover) !important;
+  background-color: rgb(var(--st-btn-rgb) / 0.2) !important;
+}
+
+.btn-success:focus-visible,
+.btn-info:focus-visible,
+.btn-primary:focus-visible,
+.btn-warning:focus-visible,
+.btn-light:focus-visible,
+.btn-secondary:focus-visible,
+.btn-dark:focus-visible,
+[class*='btn-outline-']:focus-visible {
+  box-shadow: 0 0 0 2px rgb(var(--st-btn-rgb) / 0.35);
+}
+
+.btn:disabled,
+.btn.disabled {
+  opacity: 0.45;
+}
+
+/* THE delete / destructive button, app-wide. */
+.btn-delete,
+.btn-danger {
+  color: var(--danger-text) !important;
+  background-color: rgb(var(--danger-rgb) / 0.14) !important;
+  border: none;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease;
+}
+
+.btn-delete:hover,
+.btn-delete:focus-visible,
+.btn-delete:active,
+.btn-danger:hover,
+.btn-danger:focus-visible,
+.btn-danger:active {
+  color: var(--danger-text-hover) !important;
+  background-color: rgb(var(--danger-rgb) / 0.26) !important;
+}
+
+.btn-delete:disabled,
+.btn-danger:disabled {
+  color: var(--danger-text) !important;
+  background-color: rgb(var(--danger-rgb) / 0.08) !important;
+}
+
+/* A toolbar row of content-sized buttons on a faint panel. */
+.st-action-row {
+  padding: 6px;
+  border-radius: var(--radius-md);
+  background-color: var(--surface-ghost);
+}
+
+/* Remove outlines/shadows from buttons everywhere. */
+.btn,
+.btn:hover,
+.btn:focus,
+.btn:focus-visible,
+.btn:active,
+.btn:active:focus,
+.modal .btn,
+.modal .btn:focus,
+.btn-check:focus + .btn,
+.btn-check:checked + .btn,
+a.btn,
+button.btn,
+button.btn:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+small,
+.text-sm {
+  font-size: var(--fs-2xs);
+}
+
+.text-muted {
+  color: var(--text-muted) !important;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}

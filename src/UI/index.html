@@ -1,0 +1,514 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!--
+      Local-only renderer CSP. Scripts are locked to same-origin bundles (no inline
+      JS, no eval, no remote). style-src allows 'unsafe-inline' because
+      jQuery/Bootstrap set inline style attributes.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'"
+    />
+    <link rel="stylesheet" href="./vendors/bootstrap/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="./vendors/bootstrap-icons/font/bootstrap-icons.css" />
+    <link rel="stylesheet" href="./css/main.css" />
+
+    <title>AndroidToolkit</title>
+  </head>
+  <body>
+    <div class="dragbar bg-light d-flex justify-content-center gap-3 align-items-center p-2">
+      <img class="no-drag" id="APPLICATION_NAVBAR_LOGO" src="./img/icon.png" alt="AndroidToolkit" />
+      <span class="no-drag" id="APPLICATION_NAVBAR_TITLE">AndroidToolkit</span>
+      <button type="button" class="no-drag" id="ADB_STATUS_CHIP" title="ADB status">
+        <span class="status-dot"></span>
+        <span id="ADB_STATUS_TEXT">Locating adb…</span>
+      </button>
+    </div>
+
+    <div id="APPLICATION_CONTAINER" class="h-100">
+      <div id="APPLICATION" class="container-fluid text-center text-light p-0 d-grid">
+        <div id="ADB_MISSING_BANNER" class="d-none" role="alert">
+          <i class="bi bi-exclamation-octagon" aria-hidden="true"></i>
+          <div>
+            <div class="banner-title">ADB was not found</div>
+            <div class="banner-detail" id="ADB_MISSING_DETAIL">
+              Install Android platform-tools or point AndroidToolkit at an adb executable.
+            </div>
+          </div>
+          <button type="button" class="btn btn-sm btn-light" id="ADB_MISSING_SETTINGS_BTN">
+            Open Settings
+          </button>
+        </div>
+        <div id="APPLICATION_CONTENT" class="pb-3"></div>
+      </div>
+    </div>
+
+    <!-- Activity panel (jobs) -->
+    <div id="ACTIVITY_PANEL" class="no-drag" role="region" aria-label="Activity">
+      <div class="activity-header">
+        <strong>Activity</strong>
+        <div class="d-inline-flex gap-2">
+          <button type="button" class="btn btn-sm btn-light" id="ACTIVITY_CLEAR_BTN">
+            Clear Finished
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm btn-light"
+            id="ACTIVITY_CLOSE_BTN"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+      <div class="activity-body" id="ACTIVITY_LIST"></div>
+    </div>
+
+    <!-- Bottom Bar -->
+    <div id="APP_BOTTOM_BAR">
+      <div class="bar-content">
+        <div class="bar-section left">
+          <button type="button" class="btn btn-sm btn-light no-drag" id="SELECT_ALL_BTN">
+            Select All
+          </button>
+          <button type="button" class="btn btn-sm btn-light no-drag" id="CLEAR_SELECTION_BTN">
+            Clear
+          </button>
+          <span id="SELECTION_STATUS" class="ms-2 text-muted text-sm">0 devices selected</span>
+        </div>
+        <div class="bar-section center">
+          <button type="button" class="btn btn-sm btn-success no-drag" id="INSTALL_APK_BTN">
+            <i class="bi bi-box-arrow-in-down"></i> Install APK
+          </button>
+          <button type="button" class="btn btn-sm btn-warning no-drag" id="REMOVE_ADMIN_BTN">
+            <i class="bi bi-shield-x"></i> Remove Device Admin
+          </button>
+          <button type="button" class="btn btn-sm btn-danger no-drag" id="FACTORY_RESET_BTN">
+            <i class="bi bi-eraser"></i> Factory Reset
+          </button>
+          <button type="button" class="btn btn-sm btn-light no-drag" id="REBOOT_BTN">
+            <i class="bi bi-arrow-repeat"></i> Reboot
+          </button>
+        </div>
+        <div class="bar-section right">
+          <button
+            type="button"
+            id="REFRESH_BTN"
+            class="settings-btn no-drag"
+            title="Refresh Devices (Ctrl/Cmd+R)"
+            aria-label="Refresh Devices"
+          >
+            <i class="bi bi-arrow-clockwise"></i>
+          </button>
+          <button
+            type="button"
+            id="ACTIVITY_BTN"
+            class="settings-btn activity-btn no-drag"
+            title="Activity"
+            aria-label="Activity"
+          >
+            <i class="bi bi-list-task"></i>
+            <span class="activity-count d-none" id="ACTIVITY_COUNT">0</span>
+          </button>
+          <div class="dropdown no-drag" id="SETTINGS_MENU_DROPDOWN">
+            <button
+              type="button"
+              id="NAVBAR_CORE_BUTTON"
+              class="settings-btn dropdown-toggle no-drag"
+              title="Menu"
+              aria-label="Menu"
+              data-bs-toggle="dropdown"
+              data-bs-offset="0,6"
+              data-bs-auto-close="true"
+              aria-expanded="false"
+            >
+              <i class="bi bi-gear"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end st-menu" id="SETTINGS_MENU">
+              <li><h6 class="dropdown-header">Network</h6></li>
+              <li>
+                <button type="button" class="dropdown-item" id="MENU_CONNECT">
+                  Connect to Address <span class="menu-shortcut">Ctrl+K</span>
+                </button>
+              </li>
+              <li>
+                <button type="button" class="dropdown-item" id="MENU_PAIR">
+                  Pair Wireless Device
+                </button>
+              </li>
+              <li><hr class="dropdown-divider" /></li>
+              <li><h6 class="dropdown-header">ADB</h6></li>
+              <li>
+                <button type="button" class="dropdown-item" id="MENU_RESTART_ADB">
+                  Restart ADB Server
+                </button>
+              </li>
+              <li>
+                <button type="button" class="dropdown-item" id="MENU_OPEN_LOGS">
+                  Open Logs Folder
+                </button>
+              </li>
+              <li><hr class="dropdown-divider" /></li>
+              <li>
+                <button type="button" class="dropdown-item" id="MENU_SETTINGS">
+                  Settings <span class="menu-shortcut">Ctrl+,</span>
+                </button>
+              </li>
+              <li>
+                <button type="button" class="dropdown-item" id="MENU_ABOUT">About</button>
+              </li>
+              <li><hr class="dropdown-divider" /></li>
+              <li>
+                <button type="button" class="dropdown-item text-danger" id="MENU_QUIT">
+                  Quit AndroidToolkit
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Connect Modal -->
+    <div class="modal fade" id="CONNECT_MODAL" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-md modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-body">
+            <div class="modal-title-row">
+              <strong>Connect to Device</strong>
+              <button type="button" class="modal-close" data-bs-dismiss="modal" aria-label="Close">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <div class="form-floating">
+              <input
+                type="text"
+                class="form-control"
+                id="CONNECT_ADDRESS"
+                placeholder="192.168.1.20:5555"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <label for="CONNECT_ADDRESS">Address (host or host:port)</label>
+            </div>
+            <div class="form-text">
+              For a USB device, use <em>Enable Wireless</em> on its tile instead; it switches the
+              device to TCP mode and connects for you.
+            </div>
+            <div class="d-grid">
+              <button type="button" class="btn btn-success" id="CONNECT_SUBMIT">Connect</button>
+            </div>
+            <div class="modal-section-label">Discovered on the network</div>
+            <div class="service-list" id="DISCOVERED_LIST"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pair Modal -->
+    <div class="modal fade" id="PAIR_MODAL" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-md modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-body">
+            <div class="modal-title-row">
+              <strong>Pair Wireless Device</strong>
+              <button type="button" class="modal-close" data-bs-dismiss="modal" aria-label="Close">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <div class="form-text">
+              On the device: Developer options → Wireless debugging → Pair device with pairing code.
+              Enter the address and code shown there.
+            </div>
+            <div class="form-floating">
+              <input
+                type="text"
+                class="form-control"
+                id="PAIR_ADDRESS"
+                placeholder="192.168.1.20:37123"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <label for="PAIR_ADDRESS">Pairing address (host:port)</label>
+            </div>
+            <div class="form-floating">
+              <input
+                type="text"
+                class="form-control"
+                id="PAIR_CODE"
+                placeholder="123456"
+                inputmode="numeric"
+                autocomplete="off"
+              />
+              <label for="PAIR_CODE">Pairing code</label>
+            </div>
+            <div class="d-grid">
+              <button type="button" class="btn btn-success" id="PAIR_SUBMIT">Pair</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Install APK Modal -->
+    <div class="modal fade" id="INSTALL_MODAL" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-md modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-body">
+            <div class="modal-title-row">
+              <strong>Install APK</strong>
+              <button type="button" class="modal-close" data-bs-dismiss="modal" aria-label="Close">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <div class="modal-section-label">Package</div>
+            <div class="apk-file-box" id="INSTALL_FILE_BOX">
+              <i class="bi bi-file-earmark-zip"></i>
+              <div class="min-w-0">
+                <div class="apk-name" id="INSTALL_FILE_NAME">No file chosen</div>
+                <div class="apk-size" id="INSTALL_FILE_SIZE"></div>
+              </div>
+              <button type="button" class="btn btn-sm btn-light" id="INSTALL_CHOOSE_BTN">
+                Choose…
+              </button>
+            </div>
+            <div class="modal-section-label">Options</div>
+            <div class="option-grid">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="INSTALL_OPT_REINSTALL" />
+                <label class="form-check-label" for="INSTALL_OPT_REINSTALL">Reinstall (-r)</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="INSTALL_OPT_GRANT" />
+                <label class="form-check-label" for="INSTALL_OPT_GRANT"
+                  >Grant permissions (-g)</label
+                >
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="INSTALL_OPT_DOWNGRADE" />
+                <label class="form-check-label" for="INSTALL_OPT_DOWNGRADE"
+                  >Allow downgrade (-d)</label
+                >
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="INSTALL_OPT_TEST" />
+                <label class="form-check-label" for="INSTALL_OPT_TEST">Allow test APKs (-t)</label>
+              </div>
+            </div>
+            <div class="modal-section-label">Targets</div>
+            <div class="target-list" id="INSTALL_TARGETS"></div>
+            <div class="d-grid mt-2">
+              <button type="button" class="btn btn-success" id="INSTALL_SUBMIT" disabled>
+                Install
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Remove Device Admin Modal -->
+    <div class="modal fade" id="REMOVE_ADMIN_MODAL" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-md modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-body">
+            <div class="modal-title-row">
+              <strong>Remove Device Admin</strong>
+              <button type="button" class="modal-close" data-bs-dismiss="modal" aria-label="Close">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <div class="form-text" id="REMOVE_ADMIN_HINT"></div>
+            <div class="admin-list" id="REMOVE_ADMIN_LIST"></div>
+            <div class="modal-section-label">Targets</div>
+            <div class="target-list" id="REMOVE_ADMIN_TARGETS"></div>
+            <div class="d-grid mt-2">
+              <button type="button" class="btn btn-warning" id="REMOVE_ADMIN_ALL_BTN">
+                Remove All Admins on Selected Devices
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Device Info Modal -->
+    <div class="modal fade" id="DEVICE_INFO_MODAL" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-md modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-body">
+            <div class="modal-title-row">
+              <strong id="DEVICE_INFO_TITLE">Device</strong>
+              <button type="button" class="modal-close" data-bs-dismiss="modal" aria-label="Close">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <dl class="device-info-grid" id="DEVICE_INFO_GRID"></dl>
+            <div class="modal-section-label">Actions</div>
+            <div class="d-grid gap-2" id="DEVICE_INFO_ACTIONS"></div>
+            <div class="modal-section-label">Device Admins</div>
+            <div class="admin-list" id="DEVICE_INFO_ADMINS">
+              <div class="form-text">Loading…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal fade" id="SETTINGS_MODAL" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-body">
+            <div class="modal-title-row">
+              <strong>Settings</strong>
+              <button type="button" class="modal-close" data-bs-dismiss="modal" aria-label="Close">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <div class="modal-section-label">ADB</div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">adb executable</div>
+                <div class="setting-hint" id="SETTING_ADB_HINT">
+                  Leave empty to auto-detect from ANDROID_HOME, the SDK folder, Homebrew or PATH.
+                </div>
+              </div>
+              <input
+                type="text"
+                class="form-control form-control-sm"
+                id="SETTING_ADB_PATH"
+                placeholder="auto-detect"
+                spellcheck="false"
+                style="min-width: 280px"
+              />
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Device poll interval</div>
+                <div class="setting-hint">
+                  How often the device list is refreshed, in milliseconds.
+                </div>
+              </div>
+              <input
+                type="number"
+                class="form-control form-control-sm"
+                id="SETTING_POLL"
+                min="500"
+                max="60000"
+                step="100"
+              />
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Read device details</div>
+                <div class="setting-hint">
+                  Model, Android version and battery via getprop and dumpsys.
+                </div>
+              </div>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="SETTING_ENRICH" />
+              </div>
+            </div>
+            <div class="modal-section-label">Network</div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">mDNS discovery</div>
+                <div class="setting-hint">
+                  Browse for wireless-debugging and legacy TCP/IP devices.
+                </div>
+              </div>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="SETTING_MDNS" />
+              </div>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Auto-connect discovered devices</div>
+                <div class="setting-hint">
+                  Run adb connect for every discovered device that is not already attached.
+                </div>
+              </div>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="SETTING_AUTOCONNECT" />
+              </div>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Wireless ADB port</div>
+                <div class="setting-hint">
+                  Used by Enable Wireless and as the default for Connect.
+                </div>
+              </div>
+              <input
+                type="number"
+                class="form-control form-control-sm"
+                id="SETTING_WIRELESS_PORT"
+                min="1"
+                max="65535"
+              />
+            </div>
+            <div class="modal-section-label">Install</div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Parallel installs</div>
+                <div class="setting-hint">How many devices receive an APK at the same time.</div>
+              </div>
+              <input
+                type="number"
+                class="form-control form-control-sm"
+                id="SETTING_CONCURRENCY"
+                min="1"
+                max="16"
+              />
+            </div>
+            <div class="modal-section-label">Factory Reset</div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Default strategy</div>
+                <div class="setting-hint">
+                  Auto tries the reset broadcast first and falls back to recovery if it is denied.
+                </div>
+              </div>
+              <select class="form-select form-select-sm" id="SETTING_RESET_STRATEGY">
+                <option value="auto">Auto</option>
+                <option value="broadcast">Broadcast only</option>
+                <option value="recovery">Recovery only</option>
+              </select>
+            </div>
+            <div class="d-grid mt-2">
+              <button type="button" class="btn btn-success" id="SETTINGS_SAVE">
+                Save Settings
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- About Modal -->
+    <div class="modal fade" id="ABOUT_MODAL" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-body text-center">
+            <img src="./img/icon.png" alt="" width="72" height="72" class="mx-auto mb-2" />
+            <strong id="ABOUT_TITLE">AndroidToolkit</strong>
+            <div class="text-muted text-sm" id="ABOUT_VERSION"></div>
+            <div class="text-muted text-sm" id="ABOUT_ADB"></div>
+            <div class="d-grid gap-2 mt-2">
+              <button type="button" class="btn btn-light" id="ABOUT_GITHUB">GitHub</button>
+              <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="./vendors/jquery/index.js"></script>
+    <script src="./vendors/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script src="./js/app/bundle.js" defer></script>
+  </body>
+</html>
